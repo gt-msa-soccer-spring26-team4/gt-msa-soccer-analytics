@@ -4,12 +4,18 @@
 **Authors:** Alexander Avramov, Noah Boonin, Thomas LaRock  
 **Track:** Soccer Analytics Dashboard  
 **Date:** April 2026
-## EXECUTIVE SUMMARY (we will write this last)
+
+---
+
+## EXECUTIVE SUMMARY (write last)
 - Problem: 38% of matches have equal xG, but 35% still produce a winner — what explains this?
 - Approach: Analyzed 651 xG-parity matches using clustering on positional structure
 - Key findings: [3-5 bullets with numbers]
 - Deliverable: Interactive dashboard for archetype exploration
 - Impact: Enables tactical preparation when xG can't separate teams
+
+---
+
 ## 1. INTRODUCTION & MOTIVATION (2 pages)
 
 ### 1.1 Background
@@ -31,6 +37,9 @@
 2. Develop archetype taxonomy
 3. Build interactive dashboard
 4. Validate with user testing
+
+---
+
 ## 2. PROBLEM DEFINITION & RESEARCH QUESTION (2 pages)
 
 ### 2.1 The Gap
@@ -65,6 +74,8 @@ Sub-questions:
 **Out of scope:** Real-time prediction, individual players, causation  
 **Limitations:** Barcelona-heavy data, reverse causality threat, 0.3 threshold choice
 
+---
+
 ## 3. LITERATURE REVIEW (2-3 pages)
 
 ### 3.1 xG in Soccer Analytics
@@ -93,6 +104,8 @@ Sub-questions:
 - Novel framing (xG-parity regime)
 - Archetype taxonomy
 - Accessible interactive tool
+
+---
 
 ## 4. DATA & METHODOLOGY (3-4 pages)
 
@@ -125,6 +138,8 @@ Sub-questions:
 1. xG-parity as analytical lens (novel framing)
 2. Archetype taxonomy (beyond binary win/loss)
 3. Interactive non-technical tool (accessible)
+
+---
 
 ## 5. EXPLORATORY DATA ANALYSIS (4-5 pages)
 
@@ -184,6 +199,8 @@ Three consistent patterns:
 2. Ball movement (how)
 3. Spatial variance (spread)
 
+---
+
 ## 6. CLUSTERING ANALYSIS (4-5 pages)
 
 ### 6.1 Feature Engineering Results (from 4.3)
@@ -231,6 +248,8 @@ Three consistent patterns:
 **Chi-square test:** χ²=[X], p=[Y]  
 **Effect size:** [max-min] = [X]pp difference
 
+---
+
 ## 7. RESULTS & VALIDATION (3-4 pages)
 
 ### 7.1 Key Findings (4-6 bullets)
@@ -256,6 +275,7 @@ Three consistent patterns:
 - Different thresholds (0.2, 0.5): [results]
 
 ### 7.5 User Testing (N=6-10)
+
 **Tasks:**
 1. Identify team archetype (<2 min)
 2. Compare teams (<3 min)
@@ -277,6 +297,8 @@ Three consistent patterns:
 - Direct booking links → Export/share functions
 
 **Changes made:** [list]
+
+---
 
 ## 8. INTERACTIVE DASHBOARD (2-3 pages)
 
@@ -309,6 +331,8 @@ Three consistent patterns:
 2. Filtering data
 3. Comparing teams
 4. Exploring matches
+
+---
 
 ## 9. CONCLUSIONS & FUTURE WORK (2 pages)
 
@@ -349,6 +373,8 @@ Three consistent patterns:
 ### 9.5 Final Remarks
 When xG is equal, positional structure matters. Winners push forward, non-winners circulate deeper. Dashboard makes this actionable.
 
+---
+
 ## 10. TEAM CONTRIBUTIONS
 
 **Alexander Avramov:**
@@ -362,6 +388,9 @@ When xG is equal, positional structure matters. Winners push forward, non-winner
 **Thomas LaRock:**
 - [Primary]: Statistical analysis, report writing
 - [Support]: Dashboard backend
+
+---
+
 ## 11. REFERENCES
 
 [APA format]
@@ -372,35 +401,71 @@ Required:
 - Papers on xG, tactical analysis, clustering in sports
 
 [Add as encountered during research]
+
+---
+
 ## APPENDICES
 
 ### A. Position Mapping Code
-
+```python
 POSITION_BIN_MAP = {
     "Center Back": "Center Back",
     "Left Center Back": "Center Back",
     ...
 }
+```
+
 ### B. Feature Formulas
 - Progression-weighted: [formula]
 - Zone-adjusted: [formula]
 - Control score: [formula]
 - Attacking index: [formula]
+
 ### C. Clustering Hyperparameters
 - Algorithm: [name]
 - k: [value]
 - Distance: [metric]
 - Init: [method]
 - Seed: 42
+
 ### D. Statistical Test Outputs
 - Full Mann-Whitney results by position
 - Chi-square contingency table
 - Bootstrap distributions
+
 ### E. Competition Coverage
 | Competition | Matches | xG-Parity | % |
 |-------------|---------|-----------|---|
 | ... | ... | ... | ... |
+
 ### F. Code Repository
-[GitHub link]
+[GitHub link if public]
+
 ### G. Dashboard User Guide
 [Full screenshots and instructions]
+
+---
+
+## DOCUMENT METADATA
+
+**Version History:**
+- v1.0: Initial outline (Feb 2026)
+- v2.0: Sections 1-5 complete (Mar 2026)
+- v3.0: Clustering complete (Apr 2026)
+- v4.0: Final (Apr 2026)
+
+**Word Count Target:** 8,000-10,000 words  
+**Page Count Target:** 20-30 pages  
+**Status:** [% complete]
+
+**Next Steps:**
+1. Run statistical tests (Section 5.4)
+2. Feature engineering (Section 6.1)
+3. Clustering (Section 6.3-6.5)
+4. Dashboard (Section 8)
+5. User testing (Section 7.5)
+6. Write executive summary (Section 0)
+
+---
+
+**END OF OUTLINE**
