@@ -288,4 +288,64 @@ team_match_position_progressions.to_csv(
 
 print("Progression share data set exported.")
 
+
+##################################################################################
+# 4) Add information on distance progression by position
+##################################################################################
+# compute progressive distance
+progressive_actions["progressive_distance"] = np.where(
+    progressive_actions["type"] == "Pass",
+    progressive_actions["pass_end_location_x"] - progressive_actions["location_x"],
+    progressive_actions["carry_end_location_x"] - progressive_actions["location_x"]
+)
+
+# aggregate progressive distance by position
+team_match_position_prog_distance = (
+    progressive_actions
+    .groupby(["match_id", "team", "position_bin"])["progressive_distance"]
+    .sum()
+    .reset_index(name="progressive_distance")
+)
+
+# team totals
+team_match_prog_distance_totals = (
+    team_match_position_prog_distance
+    .groupby(["match_id", "team"])["progressive_distance"]
+    .sum()
+    .reset_index(name="team_progressive_distance")
+)
+
+# merge totals
+team_match_position_prog_distance = team_match_position_prog_distance.merge(
+    team_match_prog_distance_totals,
+    on=["match_id", "team"],
+    how="left"
+)
+
+# compute share
+team_match_position_prog_distance["progressive_distance_share"] = (
+    team_match_position_prog_distance["progressive_distance"] /
+    team_match_position_prog_distance["team_progressive_distance"]
+)
+
+# add outcome
+team_match_position_prog_distance = team_match_position_prog_distance.merge(
+    xg_parity[["match_id", "team", "outcome"]],
+    on=["match_id", "team"],
+    how="left"
+)
+
+team_match_position_prog_distance["outcome_binary"] = np.where(
+    team_match_position_prog_distance["outcome"] == "Win",
+    "Win",
+    "Non-Win"
+)
+
+team_match_position_prog_distance.to_csv(
+    output_path / "positional_progressive_distance_share.csv",
+    index=False
+)
+
+print("Distance progression by position set exported.")
+
 print("Pipeline finished")
