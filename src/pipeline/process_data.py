@@ -348,4 +348,82 @@ team_match_position_prog_distance.to_csv(
 
 print("Distance progression by position set exported.")
 
+
+##################################################################################
+# 5) Wing vs Central progression
+##################################################################################
+
+progressive_actions["position_bin"] = progressive_actions["position"].map(POSITION_BIN_MAP)
+progressive_actions = progressive_actions.dropna(subset=["position_bin"])
+
+# classify zones (by pitch width)
+def classify_zone(y):
+    if y < 20 or y > 60:
+        return "Wide"
+    else:
+        return "Central"
+    
+progressive_actions["zone"] = progressive_actions["location_y"].apply(classify_zone)
+
+team_match_zone_counts = (
+    progressive_actions
+    .groupby(["match_id", "team", "position_bin", "zone"])
+    .size()
+    .reset_index(name="progressive_actions")
+)
+
+team_match_zone_totals = (
+    team_match_zone_counts
+    .groupby(["match_id", "team", "position_bin"])["progressive_actions"]
+    .sum()
+    .reset_index(name="position_total_progressive_actions")
+)
+
+team_match_zone_counts = team_match_zone_counts.merge(
+    team_match_zone_totals,
+    on=["match_id", "team", "position_bin"],
+    how="left"
+)
+
+team_match_zone_counts["progressive_share"] = (
+    team_match_zone_counts["progressive_actions"] /
+    team_match_zone_counts["position_total_progressive_actions"]
+)
+
+zone_share = (
+    team_match_zone_counts
+    .pivot(
+        index=["match_id", "team", "position_bin"],
+        columns="zone",
+        values="progressive_share"
+    )
+    .reset_index()
+    .fillna(0)
+)
+
+zone_share = zone_share.rename(columns={
+    "Wide": "wide_progression_share",
+    "Central": "central_progression_share"
+})
+
+
+zone_share = zone_share.merge(
+    xg_parity[["match_id", "team", "outcome"]],
+    on=["match_id", "team"],
+    how="left"
+)
+
+zone_share["outcome_binary"] = np.where(
+    zone_share["outcome"] == "Win",
+    "Win",
+    "Non-Win"
+)
+
+zone_share.to_csv(
+    output_path / "positional_wing_vs_central_progression_share.csv",
+    index=False
+)
+
+print("Progression by wide vs central set exported.")
+
 print("Pipeline finished")
