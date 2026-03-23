@@ -212,3 +212,43 @@ All positional files share `match_id`, `team`, `position_bin`, `outcome`, and `o
 3. **Wide vs. central progression by position** — stacked bar of `central_progression_share` vs `wide_progression_share` per `position_bin`, colored by `outcome_binary`
 4. **xG parity scatter** — `team_xg` vs `opp_xg`, colored by `outcome`, annotated with `xg_diff`
 5. **Update Busquets pizza to real data** — replace fake `values` / `values_wins` / `values_nonwins` lists using the same percentile pipeline already built for the positional group plots
+
+---
+
+## Streamlit Dashboard (`dashboard_mock.py`)
+
+### App Title
+**"Positional Level Impact in xG-Parity Matches"**
+
+No sidebar. Dark theme matching the notebook (`BG_MAIN = "#0E1117"`, `BG_DARK = "#1B1B1B"`).
+
+### Layout: Two Tabs
+
+#### Tab 1 — Overview
+Single full-width chart: **Scatter — Midfield Touch Share × Progressive Action Share**
+
+- Mirrors Figure 2 from `mplsoccer_viz.ipynb` but with no specific team highlighted
+- All teams rendered semi-transparent (`alpha=0.3`), wins in coral, non-wins in blue
+- Dot size scales with sample size (`n * 3`); teams with < 5 matches per outcome excluded
+- Dashed grey reference lines at global means of both axes
+- Data sources: `positional_touch_share.csv` joined with `positional_progressive_actions_share.csv` on `[match_id, team, position_bin]`, filtered to midfield position bins
+
+#### Tab 2 — Team View
+Top-line filter row (two selectboxes, left-aligned) + full-width dumbbell chart:
+
+**Filters:**
+- `Team` — dropdown of all teams in `positional_wing_vs_central_progression_share.csv`; defaults to "Barcelona"
+- `Year` — dropdown of all seasons (joined from `matches.parquet` via `match_id`); first option is "All Years"
+
+**Chart: Dumbbell — Central vs Wide Progression by Position**
+- Mirrors Figure 1 from `mplsoccer_viz.ipynb` but parameterized by selected team and year
+- Y-axis: all 8 position bins sorted by league average centrality (most central at top)
+- Grey diamond = league average; coral circle = selected team Win; blue circle = selected team Non-Win
+- White connector line between Win and Non-Win dots per position
+- X-axis: `central_progression_share` (0 = all wide, 1 = all central); dashed 50/50 line
+- Legend labels use selected team name dynamically; title includes team + year
+
+### Data Loading
+- `positional_touch_share.csv`, `positional_progressive_actions_share.csv`, `positional_wing_vs_central_progression_share.csv` loaded from `data/processed/`
+- `matches.parquet` loaded from `data/Statsbomb/` — joined on `match_id` to add `season_name` for the year filter
+- All loads are `@st.cache_data` decorated; fonts loaded with `@st.cache_resource`
