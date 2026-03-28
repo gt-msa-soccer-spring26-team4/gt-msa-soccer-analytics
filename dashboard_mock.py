@@ -119,15 +119,26 @@ def load_processed_data():
     wing_vs_central    = pl.read_csv(DATA_DIR / "processed" / "positional_wing_vs_central_progression_share.csv")
     xg_parity          = pl.read_csv(DATA_DIR / "processed" / "xg_parity_matches.csv")
     matches            = pl.read_parquet(DATA_DIR / "Statsbomb" / "matches.parquet")
-    return touch_share, prog_actions_share, prog_dist_share, wing_vs_central, xg_parity, matches
+    team_metrics       = pl.read_csv(DATA_DIR / "processed" / "team_level_metrics.csv")
+    return touch_share, prog_actions_share, prog_dist_share, wing_vs_central, xg_parity, matches, team_metrics
 
-touch_share, prog_actions_share, prog_dist_share, wing_vs_central, xg_parity, matches = load_processed_data()
+touch_share, prog_actions_share, prog_dist_share, wing_vs_central, xg_parity, matches, team_metrics = load_processed_data()
 
 match_seasons     = matches.select(["match_id", "season_name"]).unique()
 touch_share_s     = touch_share.join(match_seasons, on="match_id", how="left")
 prog_actions_s    = prog_actions_share.join(match_seasons, on="match_id", how="left")
 wing_vs_central_s = wing_vs_central.join(match_seasons, on="match_id", how="left")
 xg_parity_s       = xg_parity.join(match_seasons, on="match_id", how="left")
+team_metrics_s    = (
+    team_metrics
+    .with_columns(
+        pl.when(pl.col("outcome") == "Win")
+          .then(pl.lit("Win"))
+          .otherwise(pl.lit("Non-Win"))
+          .alias("outcome_binary")
+    )
+    .join(match_seasons, on="match_id", how="left")
+)
 
 # ── Pizza constants ───────────────────────────────────────────────────────────
 METRICS = [
@@ -182,6 +193,19 @@ def build_touch_dumbbell_data(year: str):
         .agg(pl.col("touch_share").mean().alias("touch_share"))
     )
     return league_agg.to_pandas(), team_agg.to_pandas()
+
+# ── Tactical scatter data (module-level cache) ────────────────────────────────
+@st.cache_data
+def build_scatter_data(year: str):
+    src = team_metrics_s if year == "All Years" else team_metrics_s.filter(pl.col("season_name") == year)
+    SCATTER_COLS = ["wide_progression_share", "build_up_share", "max_progression_share", "central_midfield_touch_share"]
+    # Aggregate to (team, outcome_binary) means — one dot per team per outcome
+    agg = (
+        src
+        .group_by(["team", "outcome_binary"])
+        .agg([pl.col(c).mean() for c in SCATTER_COLS] + [pl.len().alias("n")])
+    )
+    return agg.to_pandas()
 
 # ── Pizza aggregations (module-level cache) ───────────────────────────────────
 @st.cache_data
@@ -391,13 +415,142 @@ ALL_POS = list(POS_DEPTH.keys())
 
 grouped_grp, grouped_bin = build_pizza_aggs(selected_year)
 
-# ── Row 1: Touch Share | Central (shared Y-axis) ─────────────────────────────
-col_touch, col_central = st.columns([1, 1])
-
+SPINE_COL = "#2E323A"
 YTICKS    = [POS_DEPTH[p] for p in ALL_POS]
 YLIM      = (-0.6, 7.5)
-SPINE_COL = "#2E323A"
 GRID_KW   = dict(axis="x", color=SPINE_COL, lw=0.6, zorder=0)
+
+# ── Row 1: Viz 1 — Tactical Quadrant Scatter (Wide vs Build-Up) ──────────────
+scatter_df = build_scatter_data(selected_year)
+
+if True:
+    fig_sc, ax_sc = plt.subplots(figsize=(12, 5.0))
+    fig_sc.patch.set_alpha(0)
+    ax_sc.set_facecolor(BG_DARK)
+
+    for outcome, color in [("Non-Win", BLUE), ("Win", CORAL)]:
+        sub = scatter_df[scatter_df["outcome_binary"] == outcome]
+        others = sub[sub["team"] != selected_team] if selected_team != "All Teams" else sub
+        ax_sc.scatter(
+            others["wide_progression_share"], others["build_up_share"],
+            c=color, alpha=0.22, s=35, zorder=2,
+        )
+        if selected_team != "All Teams":
+            team_row = sub[sub["team"] == selected_team]
+            if not team_row.empty:
+                ax_sc.scatter(
+                    team_row["wide_progression_share"], team_row["build_up_share"],
+                    c=color, alpha=1.0, s=200, zorder=5,
+                    edgecolors=WHITE, linewidths=1.2,
+                )
+                for _, r in team_row.iterrows():
+                    ax_sc.annotate(
+                        f"{selected_team} · {outcome}",
+                        xy=(r["wide_progression_share"], r["build_up_share"]),
+                        xytext=(9, 6), textcoords="offset points",
+                        color=WHITE, fontsize=7.5, zorder=6,
+                        fontproperties=font_normal.prop,
+                        bbox=dict(boxstyle="round,pad=0.25", facecolor=BG_DARK,
+                                  edgecolor=color, lw=0.9, alpha=0.85),
+                        arrowprops=dict(arrowstyle="-", color=color, lw=0.7),
+                    )
+
+    xmed = scatter_df["wide_progression_share"].median()
+    ymed = scatter_df["build_up_share"].median()
+    xmin_ = scatter_df["wide_progression_share"].min()
+    xmax_ = scatter_df["wide_progression_share"].max()
+    ymin_ = scatter_df["build_up_share"].min()
+    ymax_ = scatter_df["build_up_share"].max()
+    ax_sc.axvline(xmed, color=WHITE, lw=0.7, ls="--", alpha=0.30)
+    ax_sc.axhline(ymed, color=WHITE, lw=0.7, ls="--", alpha=0.30)
+    qkw = dict(color=GREY, fontsize=7.5, alpha=0.75, ha="center", va="center",
+               fontproperties=font_normal.prop)
+    ax_sc.text((xmin_ + xmed) / 2, (ymed + ymax_) / 2, "Central + Control", **qkw)
+    ax_sc.text((xmed + xmax_) / 2, (ymed + ymax_) / 2, "Wide + Control",    **qkw)
+    ax_sc.text((xmin_ + xmed) / 2, (ymin_ + ymed) / 2, "Central + Direct",  **qkw)
+    ax_sc.text((xmed + xmax_) / 2, (ymin_ + ymed) / 2, "Wide + Direct",     **qkw)
+    ax_sc.xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+    ax_sc.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+    ax_sc.set_xlabel("Wide Progression Share  →  (more wide)", color=TEXT_MUTED,
+                     fontsize=8, fontproperties=font_normal.prop, labelpad=4)
+    ax_sc.set_ylabel("Build-Up Share  →  (more controlled)", color=TEXT_MUTED,
+                     fontsize=8, fontproperties=font_normal.prop, labelpad=4)
+    ax_sc.tick_params(colors=GREY, labelsize=8)
+    for sp in ax_sc.spines.values():
+        sp.set_edgecolor(SPINE_COL)
+    ax_sc.set_title("Tactical Style: Wide vs Build-Up", color=WHITE, fontsize=10, pad=6,
+                    fontproperties=font_bold.prop)
+    fig_sc.tight_layout()
+    st.pyplot(fig_sc, use_container_width=True)
+    plt.close(fig_sc)
+
+# ── Row 2: Viz 4 — Concentration vs CM Touch Share ───────────────────────────
+if True:
+    fig_v4, ax_v4 = plt.subplots(figsize=(12, 5.0))
+    fig_v4.patch.set_alpha(0)
+    ax_v4.set_facecolor(BG_DARK)
+
+    for outcome, color in [("Non-Win", BLUE), ("Win", CORAL)]:
+        sub = scatter_df[scatter_df["outcome_binary"] == outcome]
+        others = sub[sub["team"] != selected_team] if selected_team != "All Teams" else sub
+        ax_v4.scatter(
+            others["max_progression_share"], others["central_midfield_touch_share"],
+            c=color, alpha=0.22, s=35, zorder=2,
+        )
+        if selected_team != "All Teams":
+            team_row = sub[sub["team"] == selected_team]
+            if not team_row.empty:
+                ax_v4.scatter(
+                    team_row["max_progression_share"], team_row["central_midfield_touch_share"],
+                    c=color, alpha=1.0, s=200, zorder=5,
+                    edgecolors=WHITE, linewidths=1.2,
+                )
+                for _, r in team_row.iterrows():
+                    ax_v4.annotate(
+                        f"{selected_team} · {outcome}",
+                        xy=(r["max_progression_share"], r["central_midfield_touch_share"]),
+                        xytext=(9, 6), textcoords="offset points",
+                        color=WHITE, fontsize=7.5, zorder=6,
+                        fontproperties=font_normal.prop,
+                        bbox=dict(boxstyle="round,pad=0.25", facecolor=BG_DARK,
+                                  edgecolor=color, lw=0.9, alpha=0.85),
+                        arrowprops=dict(arrowstyle="-", color=color, lw=0.7),
+                    )
+
+    xmean = scatter_df["max_progression_share"].mean()
+    ymean = scatter_df["central_midfield_touch_share"].mean()
+    xmin_ = scatter_df["max_progression_share"].min()
+    xmax_ = scatter_df["max_progression_share"].max()
+    ymin_ = scatter_df["central_midfield_touch_share"].min()
+    ymax_ = scatter_df["central_midfield_touch_share"].max()
+    ax_v4.axvline(xmean, color=WHITE, lw=0.7, ls="--", alpha=0.30)
+    ax_v4.axhline(ymean, color=WHITE, lw=0.7, ls="--", alpha=0.30)
+    qkw4 = dict(color=GREY, fontsize=7.5, alpha=0.75, ha="center", va="center",
+                fontproperties=font_normal.prop)
+    ax_v4.text((xmin_ + xmean) / 2, (ymean + ymax_) / 2, "Total Football\n+ High CM",          **qkw4)
+    ax_v4.text((xmean + xmax_) / 2, (ymean + ymax_) / 2, "Dominant Position\n+ CM Controlled", **qkw4)
+    ax_v4.text((xmin_ + xmean) / 2, (ymin_ + ymean) / 2, "Total Football\n+ Low CM",           **qkw4)
+    ax_v4.text((xmean + xmax_) / 2, (ymin_ + ymean) / 2, "Single Position\n(Non-CM Dominant)", **qkw4)
+    ax_v4.xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+    ax_v4.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+    ax_v4.set_xlabel("Max Position Progressive Share  →  (more concentrated)", color=TEXT_MUTED,
+                     fontsize=8, fontproperties=font_normal.prop, labelpad=4)
+    ax_v4.set_ylabel("Central Midfield Touch Share  →", color=TEXT_MUTED,
+                     fontsize=8, fontproperties=font_normal.prop, labelpad=4)
+    ax_v4.tick_params(colors=GREY, labelsize=8)
+    for sp in ax_v4.spines.values():
+        sp.set_edgecolor(SPINE_COL)
+    ax_v4.set_title("Play Concentration vs CM Dominance", color=WHITE, fontsize=10, pad=6,
+                    fontproperties=font_bold.prop)
+    fig_v4.tight_layout()
+    st.pyplot(fig_v4, use_container_width=True)
+    plt.close(fig_v4)
+
+st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
+# ── Row 3: Touch Share | Central (shared Y-axis) ─────────────────────────────
+col_touch, col_central = st.columns([1, 1])
+
 
 with col_touch:
     fig_ts, ax_ts = plt.subplots(figsize=(5, 3.5))
@@ -473,7 +626,7 @@ with col_central:
     st.pyplot(fig_db, use_container_width=True)
     plt.close(fig_db)
 
-# ── Row 2: four pizzas — GK | Def | Mid | Att ────────────────────────────────
+# ── Row 4: four pizzas — GK | Def | Mid | Att ────────────────────────────────
 st.markdown(
     f"<p style='color:{TEXT_MUTED};font-size:0.72rem;letter-spacing:0.09em;"
     f"text-transform:uppercase;margin:6px 0 2px'>Percentile Ranks</p>",
