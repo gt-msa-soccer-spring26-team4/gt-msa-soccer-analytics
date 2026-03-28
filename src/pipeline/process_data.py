@@ -486,7 +486,7 @@ team_level = team_level.merge(
     how="left"
 )
 
-print("Team metric computed: wide percentage of play")
+print("Team metric computed: wide percentage of play.")
 
 ##################################################################################
 # 7) Team-level metrics: where teams operate in build-up vs advanced phases
@@ -582,7 +582,62 @@ team_level = team_level.merge(
     how="left"
 )
 
-print("Team metric computed: build up percentage of play")
+print("Team metric computed: build up percentage of play.")
+
+team_level = team_level.sort_values(["match_id", "team"])
+
+##################################################################################
+# 8) Team-level metrics: position concentration by the team - is it fluiod or spread out
+##################################################################################
+pos_prog = pd.read_csv(
+    output_path / "positional_progressive_actions_share.csv"
+)
+
+max_prog = (
+    pos_prog
+    .groupby(["match_id", "team"])["progressive_share"]
+    .max()
+    .reset_index(name="max_progression_share")
+)
+
+team_level = team_level.merge(
+    max_prog,
+    on=["match_id", "team"],
+    how="left"
+)
+
+print("Team metric computed: concentration of progressive possestion done.")
+
+
+##################################################################################
+# 9) Team-level metrics: what is the central midfield doing?
+##################################################################################
+
+pos_touch = pd.read_csv(
+    output_path / "positional_touch_share.csv"
+)
+
+MIDFIELD = ["Central Midfield", "Attacking Midfield"]
+
+midfield = pos_touch[
+    pos_touch["position_bin"].isin(MIDFIELD)
+]
+
+midfield_share = (
+    midfield
+    .groupby(["match_id", "team"])["touch_share"]
+    .sum()
+    .reset_index(name="central_midfield_touch_share")
+)
+
+team_level = team_level.merge(
+    midfield_share,
+    on=["match_id", "team"],
+    how="left"
+)
+
+print("Team metric computed: central midfield control done.")
+
 
 team_level = team_level.sort_values(["match_id", "team"])
 
@@ -591,4 +646,4 @@ team_level.to_csv(
     index=False
 )
 
-print("Pipeline finished")
+print("Pipeline finished.")
