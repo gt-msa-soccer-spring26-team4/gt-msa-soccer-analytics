@@ -183,6 +183,24 @@ Match-level xG summary. Both teams appear as separate rows per match. Useful for
 
 ---
 
+### `team_level_metrics.csv` — 1,302 rows × 7 columns
+
+Team-level tactical metrics per match. One row per team per match. Captures overall progression style and central midfield involvement.
+
+| Column | Type | Description |
+|---|---|---|
+| `match_id` | Int64 | Match identifier |
+| `team` | String | Team name |
+| `outcome` | String | Win / Draw / Loss |
+| `wide_progression_share` | Float64 | Share of progressive actions through wide channels |
+| `build_up_share` | Float64 | Share of progressive actions in the build-up phase |
+| `max_progression_share` | Float64 | Largest single positional group's share of progressive actions (dominant position) |
+| `central_midfield_touch_share` | Float64 | Central midfield's share of total team touches |
+
+Note: joins to positional CSVs on `match_id` + `team`; no `outcome_binary` column — derive as `Win` vs `Non-Win` if needed.
+
+---
+
 ## Shared Dimension Values
 
 **`position_bin`** (8 groups, consistent across all positional CSVs):
@@ -204,7 +222,7 @@ Match-level xG summary. Both teams appear as separate rows per match. Useful for
 ## Key Notes for Building Further Figures
 
 ### Joining the CSVs
-All positional files share `match_id`, `team`, `position_bin`, `outcome`, and `outcome_binary` — they join directly on those keys. `xg_parity_matches` joins on `match_id` + `team`.
+All positional files share `match_id`, `team`, `position_bin`, `outcome`, and `outcome_binary` — they join directly on those keys. `xg_parity_matches` and `team_level_metrics` join on `match_id` + `team`.
 
 ### Suggested Next Figures
 1. **Positional touch share by outcome** — grouped bar or violin, `touch_share` by `position_bin`, split by `outcome_binary`
