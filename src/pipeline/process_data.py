@@ -584,4 +584,11 @@ team_level = team_level.merge(
 
 print("Team metric computed: build up percentage of play")
 
+team_level = team_level.sort_values(["match_id", "team"])
+
+team_level.to_csv(
+    output_path / "team_level_metrics.csv",
+    index=False
+)
+
 print("Pipeline finished")
