@@ -7,7 +7,7 @@ FOLDERS = {
     "Polymarket": "1k04QXUITT8H2XgRNNBjzK0kO7plXNL5E",
     "Statsbomb": "1QpFf8qASVVtKz1B93mEx34phL1vtGcO6"
 }
-DATA_DIR = "data"
+DATA_DIR = "data/raw"
 ALLOWED_EXTENSIONS = {".parquet", ".md"}
 
 def download_folder(folder_name, folder_id):
@@ -51,7 +51,7 @@ def download_folder(folder_name, folder_id):
 
 def main():
     if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR)
+        os.makedirs(DATA_DIR, exist_ok=True)
         
     for name, folder_id in FOLDERS.items():
         download_folder(name, folder_id)
