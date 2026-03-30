@@ -426,4 +426,224 @@ zone_share.to_csv(
 
 print("Progression by wide vs central set exported.")
 
-print("Pipeline finished")
+
+##################################################################################
+# 6) Team-level metrics: team-level wide vs central progression
+##################################################################################
+team_level = xg_parity[["match_id", "team", "outcome"]].copy()
+
+# filter to parity matches
+progressive_events = events[events["match_id"].isin(xg_parity["match_id"])].copy()
+
+# keep passes + carries
+prog_events = progressive_events[progressive_events["type"].isin(["Pass", "Carry"])].copy()
+
+# define progressive
+prog_events["is_progressive"] = (
+    (prog_events["type"] == "Pass") &
+    (prog_events["pass_end_location_x"] - prog_events["location_x"] >= 10)
+) | (
+    (prog_events["type"] == "Carry") &
+    (prog_events["carry_end_location_x"] - prog_events["location_x"] >= 10)
+)
+
+# filter
+progressive_actions = prog_events[prog_events["is_progressive"]].copy()
+
+def classify_zone(y):
+    return "Wide" if (y < 20 or y > 60) else "Central"
+
+progressive_actions["zone"] = progressive_actions["location_y"].apply(classify_zone)
+
+team_prog_total = (
+    progressive_actions
+    .groupby(["match_id", "team"])
+    .size()
+    .reset_index(name="team_progressive_actions")
+)
+
+team_wide_prog = (
+    progressive_actions[progressive_actions["zone"] == "Wide"]
+    .groupby(["match_id", "team"])
+    .size()
+    .reset_index(name="wide_progressive_actions")
+)
+
+team_width = team_prog_total.merge(
+    team_wide_prog,
+    on=["match_id", "team"],
+    how="left"
+).fillna(0)
+
+team_width["wide_progression_share"] = (
+    team_width["wide_progressive_actions"] /
+    team_width["team_progressive_actions"]
+)
+
+team_level = team_level.merge(
+    team_width[["match_id", "team", "wide_progression_share"]],
+    on=["match_id", "team"],
+    how="left"
+)
+
+print("Team metric computed: wide percentage of play.")
+
+##################################################################################
+# 7) Team-level metrics: where teams operate in build-up vs advanced phases
+#     -i .e., is it slow and structured build up (tiki taka) or direct (west brom vibes)
+##################################################################################
+TOUCH_EVENTS = [
+    "Ball Receipt*", 
+    "Pass", 
+    "Carry", 
+    "Dribble", 
+    "Shot"
+]
+
+POSITION_BIN_MAP = {
+    "Center Back": "Center Back",
+    "Left Center Back": "Center Back",
+    "Right Center Back": "Center Back",
+
+    "Left Back": "Fullback",
+    "Right Back": "Fullback",
+    "Left Wing Back": "Fullback",
+    "Right Wing Back": "Fullback",
+
+    "Center Defensive Midfield": "Defensive Midfield",
+    "Left Defensive Midfield": "Defensive Midfield",
+    "Right Defensive Midfield": "Defensive Midfield",
+
+    "Center Midfield": "Central Midfield",
+    "Left Center Midfield": "Central Midfield",
+    "Right Center Midfield": "Central Midfield",
+
+    "Center Attacking Midfield": "Attacking Midfield",
+    "Left Attacking Midfield": "Attacking Midfield",
+    "Right Attacking Midfield": "Attacking Midfield",
+
+    "Left Wing": "Wide Forward",
+    "Right Wing": "Wide Forward",
+    "Left Midfield": "Wide Forward",
+    "Right Midfield": "Wide Forward",
+
+    "Center Forward": "Striker",
+    "Left Center Forward": "Striker",
+    "Right Center Forward": "Striker",
+    "Secondary Striker": "Striker",
+
+    "Goalkeeper": "Goalkeeper",
+}
+
+touches = events[
+    (events["match_id"].isin(xg_parity["match_id"])) &
+    (events["type"].isin(TOUCH_EVENTS))
+].copy()
+
+touches["position_bin"] = touches["position"].map(POSITION_BIN_MAP)
+touches = touches.dropna(subset=["position_bin"])
+
+team_pos_touches = (
+    touches
+    .groupby(["match_id", "team", "position_bin"])
+    .size()
+    .reset_index(name="touches")
+)
+
+BUILD_UP = ["Center Back", "Fullback", "Defensive Midfield"]
+
+team_pos_touches["phase"] = np.where(
+    team_pos_touches["position_bin"].isin(BUILD_UP),
+    "BuildUp",
+    "Advanced"
+)
+
+team_phase = (
+    team_pos_touches
+    .groupby(["match_id", "team", "phase"])["touches"]
+    .sum()
+    .reset_index()
+)
+
+team_phase = team_phase.pivot(
+    index=["match_id", "team"],
+    columns="phase",
+    values="touches"
+).reset_index().fillna(0)
+
+team_phase["build_up_share"] = (
+    team_phase["BuildUp"] /
+    (team_phase["BuildUp"] + team_phase["Advanced"])
+)
+
+team_level = team_level.merge(
+    team_phase[["match_id", "team", "build_up_share"]],
+    on=["match_id", "team"],
+    how="left"
+)
+
+print("Team metric computed: build up percentage of play.")
+
+team_level = team_level.sort_values(["match_id", "team"])
+
+##################################################################################
+# 8) Team-level metrics: position concentration by the team - is it fluiod or spread out
+##################################################################################
+pos_prog = pd.read_csv(
+    output_path / "positional_progressive_actions_share.csv"
+)
+
+max_prog = (
+    pos_prog
+    .groupby(["match_id", "team"])["progressive_share"]
+    .max()
+    .reset_index(name="max_progression_share")
+)
+
+team_level = team_level.merge(
+    max_prog,
+    on=["match_id", "team"],
+    how="left"
+)
+
+print("Team metric computed: concentration of progressive possestion done.")
+
+
+##################################################################################
+# 9) Team-level metrics: what is the central midfield doing?
+##################################################################################
+
+pos_touch = pd.read_csv(
+    output_path / "positional_touch_share.csv"
+)
+
+MIDFIELD = ["Central Midfield", "Attacking Midfield"]
+
+midfield = pos_touch[
+    pos_touch["position_bin"].isin(MIDFIELD)
+]
+
+midfield_share = (
+    midfield
+    .groupby(["match_id", "team"])["touch_share"]
+    .sum()
+    .reset_index(name="central_midfield_touch_share")
+)
+
+team_level = team_level.merge(
+    midfield_share,
+    on=["match_id", "team"],
+    how="left"
+)
+
+print("Team metric computed: central midfield control done.")
+
+
+team_level = team_level.sort_values(["match_id", "team"])
+
+team_level.to_csv(
+    output_path / "team_level_metrics.csv",
+    index=False
+)
+
+print("Pipeline finished.")
