@@ -1,75 +1,97 @@
 import streamlit as st
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
-from mplsoccer import Pitch, PyPizza, FontManager
+from mplsoccer import FontManager, PyPizza
 import polars as pl
 from pathlib import Path
-import numpy as np
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     layout="wide",
-    page_title="Trilemma Soccer Analytics",
-    initial_sidebar_state="expanded",
+    page_title="Positional Level Impact in xG-Parity Matches",
+    initial_sidebar_state="collapsed",
 )
 
 # ── Color palette ─────────────────────────────────────────────────────────────
 BG_MAIN    = "#0E1117"
 BG_PANEL   = "#161B22"
-BG_PITCH   = "#0D1B2A"
-LINE_PITCH = "#2E4057"
-ACCENT     = "#E05C5C"
+BG_DARK    = "#1B1B1B"
+ACCENT     = "#1A78CF"   # unified blue accent
+CORAL      = "lightcoral"
+BLUE       = "#1A78CF"
+GREY       = "#888888"
+WHITE      = "#F2F2F2"
 TEXT       = "#E6EDF3"
 TEXT_MUTED = "#8B949E"
+BORDER     = "#1A78CF33"  # blue at 20% opacity for subtle borders
 
 # ── Custom CSS ────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
-/* shell */
+/* ── Shell ── */
 .stApp {{ background-color: {BG_MAIN}; }}
-/* remove default top padding so header sits tight */
-.block-container {{ padding-top: 1.2rem !important; padding-bottom: 0.5rem !important; }}
-/* sidebar */
-[data-testid="stSidebar"] {{
-    background-color: {BG_PANEL};
-    border-right: 1px solid #30363D;
+.block-container {{
+    padding-top: 1.2rem !important;
+    padding-bottom: 0.5rem !important;
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+    max-width: 100% !important;
 }}
-[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
-/* labels */
-label {{ color: {TEXT_MUTED} !important; font-size: 0.75rem !important;
+[data-testid="collapsedControl"] {{ display: none; }}
+
+/* ── Typography ── */
+h1, h2, h3 {{ color: {TEXT} !important; margin-bottom: 0 !important; }}
+p, li {{ color: {TEXT_MUTED}; }}
+hr {{ border-color: #30363D !important; margin: 0.4rem 0 !important; }}
+label {{ color: {TEXT_MUTED} !important; font-size: 0.72rem !important;
          letter-spacing: 0.07em; text-transform: uppercase; }}
-/* headings */
-h2, h3 {{ color: {TEXT} !important; margin-bottom: 0 !important; }}
-/* dividers */
-hr {{ border-color: #30363D !important; margin: 0.5rem 0 !important; }}
-/* stat cards */
+
+/* ── Tabs — replace Streamlit accent with blue ── */
+[data-baseweb="tab-highlight"] {{ background-color: {ACCENT} !important; }}
+button[data-baseweb="tab"] {{ color: {TEXT_MUTED} !important; }}
+button[data-baseweb="tab"][aria-selected="true"] {{ color: {TEXT} !important; }}
+[data-baseweb="tab-list"] {{ background-color: {BG_MAIN} !important;
+                             border-bottom: 1px solid #30363D; }}
+
+/* ── Inputs — replace Streamlit green/red focus with blue ── */
+[data-baseweb="select"] > div:focus-within,
+[data-baseweb="input"] > div:focus-within {{
+    border-color: {ACCENT} !important;
+    box-shadow: 0 0 0 1px {ACCENT} !important;
+}}
+[data-baseweb="select"] > div,
+[data-baseweb="input"] > div {{
+    background-color: {BG_PANEL} !important;
+    border-color: #30363D !important;
+    color: {TEXT} !important;
+}}
+[data-baseweb="select"] * {{ color: {TEXT} !important; }}
+[data-baseweb="popover"] {{ background-color: {BG_PANEL} !important; }}
+
+/* ── Misc components ── */
+[data-testid="stImage"] img {{ border-radius: 6px; }}
+
+/* ── Stat card ── */
 .stat-card {{
-    background: {BG_PANEL}; border: 1px solid #30363D; border-radius: 8px;
-    padding: 10px 14px; text-align: center;
+    background: {BG_PANEL};
+    border: 1px solid {ACCENT}44;
+    border-radius: 8px;
+    padding: 10px 16px;
+    text-align: center;
 }}
 .stat-label {{ color: {TEXT_MUTED}; font-size: 0.68rem; letter-spacing: 0.09em;
-               text-transform: uppercase; margin-bottom: 2px; }}
-.stat-value {{ color: {TEXT}; font-size: 1.5rem; font-weight: 700; line-height: 1.15; }}
-/* sidebar metric cards */
-.side-card {{
-    background: {BG_MAIN}; border: 1px solid #30363D; border-radius: 6px;
-    padding: 8px 12px; margin-bottom: 6px;
+               text-transform: uppercase; margin-bottom: 3px; }}
+.stat-value {{ color: {TEXT}; font-size: 1.6rem; font-weight: 700; line-height: 1.1; }}
+
+/* ── Placeholder box ── */
+.placeholder-box {{
+    border: 1px dashed {ACCENT}88;
+    border-radius: 8px;
+    padding: 10px 16px;
+    background: {BG_PANEL};
+    color: {TEXT_MUTED};
+    font-size: 0.80rem;
+    letter-spacing: 0.03em;
 }}
-.side-label {{ color: {TEXT_MUTED}; font-size: 0.66rem; letter-spacing: 0.08em;
-               text-transform: uppercase; }}
-.side-value {{ color: {TEXT}; font-size: 1.15rem; font-weight: 600; }}
-/* chart label row */
-.chart-label {{ color: {TEXT_MUTED}; font-size: 0.70rem; letter-spacing: 0.07em;
-                text-transform: uppercase; margin-bottom: 2px; }}
-/* pyplot images */
-[data-testid="stImage"] img {{ border-radius: 6px; }}
-/* apply button */
-div[data-testid="stFormSubmitButton"] > button {{
-    width: 100%; background: #238636; color: white; border: none;
-    border-radius: 6px; padding: 8px; font-weight: 600; font-size: 0.85rem;
-    cursor: pointer;
-}}
-div[data-testid="stFormSubmitButton"] > button:hover {{ background: #2ea043; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -86,256 +108,554 @@ def load_fonts():
 
 font_normal, font_bold = load_fonts()
 
-# ── Data loading + xG-parity pre-filter ──────────────────────────────────────
-DATA_DIR = Path("data/Statsbomb")
-XG_PARITY_THRESHOLD = 0.3
+# ── Data loading ──────────────────────────────────────────────────────────────
+DATA_DIR = Path("data")
 
 @st.cache_data
-def load_parity_data():
-    """Load events & matches, pre-filter events to xG-parity matches only."""
-    events  = pl.read_parquet(DATA_DIR / "events.parquet")
-    matches = pl.read_parquet(DATA_DIR / "matches.parquet")
+def load_processed_data():
+    touch_share        = pl.read_csv(DATA_DIR / "processed" / "positional_touch_share.csv")
+    prog_actions_share = pl.read_csv(DATA_DIR / "processed" / "positional_progressive_actions_share.csv")
+    prog_dist_share    = pl.read_csv(DATA_DIR / "processed" / "positional_progressive_distance_share.csv")
+    wing_vs_central    = pl.read_csv(DATA_DIR / "processed" / "positional_wing_vs_central_progression_share.csv")
+    xg_parity          = pl.read_csv(DATA_DIR / "processed" / "xg_parity_matches.csv")
+    matches            = pl.read_parquet(DATA_DIR / "Statsbomb" / "matches.parquet")
+    team_metrics       = pl.read_csv(DATA_DIR / "processed" / "team_level_metrics.csv")
+    return touch_share, prog_actions_share, prog_dist_share, wing_vs_central, xg_parity, matches, team_metrics
 
-    # Build xG per team per match from shots
-    shots = events.filter(pl.col("type") == "Shot")
-    team_xg = shots.group_by(["match_id", "team_id"]).agg(
-        pl.col("shot_statsbomb_xg").sum().alias("total_xg")
+touch_share, prog_actions_share, prog_dist_share, wing_vs_central, xg_parity, matches, team_metrics = load_processed_data()
+
+match_seasons     = matches.select(["match_id", "season_name"]).unique()
+touch_share_s     = touch_share.join(match_seasons, on="match_id", how="left")
+prog_actions_s    = prog_actions_share.join(match_seasons, on="match_id", how="left")
+wing_vs_central_s = wing_vs_central.join(match_seasons, on="match_id", how="left")
+xg_parity_s       = xg_parity.join(match_seasons, on="match_id", how="left")
+team_metrics_s    = (
+    team_metrics
+    .with_columns(
+        pl.when(pl.col("outcome") == "Win")
+          .then(pl.lit("Win"))
+          .otherwise(pl.lit("Non-Win"))
+          .alias("outcome_binary")
     )
-    ta = team_xg.rename({"team_id": "team_a", "total_xg": "xg_a"})
-    tb = team_xg.rename({"team_id": "team_b", "total_xg": "xg_b"})
-    pairs = ta.join(tb, on="match_id").filter(pl.col("team_a") != pl.col("team_b"))
-    parity_ids = (
-        pairs.with_columns((pl.col("xg_a") - pl.col("xg_b")).abs().alias("xg_diff"))
-        .filter(pl.col("xg_diff") <= XG_PARITY_THRESHOLD)["match_id"]
-        .unique().to_list()
-    )
-
-    # Pre-filter to parity pool — subsequent queries hit this smaller frame
-    events_p = events.filter(pl.col("match_id").is_in(parity_ids))
-    return events_p, matches, parity_ids
-
-events_p, matches_all, parity_ids = load_parity_data()
-parity_id_set = set(parity_ids)
-
-# ── Cached lookup helpers ─────────────────────────────────────────────────────
-
-@st.cache_data
-def all_parity_players() -> list[str]:
-    return sorted(
-        events_p.filter(pl.col("player").is_not_null())["player"].unique().to_list()
-    )
-
-@st.cache_data
-def seasons_for_player(player: str) -> list[str]:
-    """Seasons where the player appeared in xG-parity matches."""
-    mids = events_p.filter(pl.col("player") == player)["match_id"].unique().to_list()
-    seasons = (
-        matches_all.filter(pl.col("match_id").is_in(mids))["season_name"]
-        .unique().to_list()
-    )
-    return sorted(seasons)
-
-@st.cache_data
-def player_parity_events(player: str, season: str, condition: str) -> pl.DataFrame:
-    """
-    Return events for *player* in xG-parity matches, optionally restricted by
-    season and match outcome condition.  All heavy filtering is done here so
-    downstream code stays lightweight.
-    """
-    # Season filter
-    if season == "All Seasons":
-        candidate_ids = parity_ids
-    else:
-        season_mids = matches_all.filter(
-            pl.col("season_name") == season
-        )["match_id"].to_list()
-        candidate_ids = list(parity_id_set & set(season_mids))
-
-    pe = events_p.filter(
-        (pl.col("player") == player) & pl.col("match_id").is_in(candidate_ids)
-    )
-    if pe.is_empty() or condition == "All":
-        return pe
-
-    # Win/non-win filter — determine player's team result per match
-    player_team = pe.select(["match_id", "team_id"]).unique()
-    match_df = matches_all.filter(pl.col("match_id").is_in(candidate_ids)).select(
-        ["match_id", "home_team_id", "away_team_id", "home_score", "away_score"]
-    )
-    joined = player_team.join(match_df, on="match_id").with_columns(
-        pl.when(
-            ((pl.col("team_id") == pl.col("home_team_id")) & (pl.col("home_score") > pl.col("away_score")))
-            | ((pl.col("team_id") == pl.col("away_team_id")) & (pl.col("away_score") > pl.col("home_score")))
-        ).then(pl.lit("win")).otherwise(pl.lit("non-win")).alias("result")
-    )
-    result_label = "win" if condition == "Wins" else "non-win"
-    win_mids = joined.filter(pl.col("result") == result_label)["match_id"].to_list()
-    return pe.filter(pl.col("match_id").is_in(win_mids))
-
-
-# ── Plot helpers ──────────────────────────────────────────────────────────────
-
-CMAP_KDE = LinearSegmentedColormap.from_list(
-    "pass_heat", [BG_PITCH, ACCENT, "#FFFFFF"], N=256
+    .join(match_seasons, on="match_id", how="left")
 )
 
-def _dark_fig(fig, *extra_axes):
-    fig.patch.set_facecolor(BG_PANEL)
-    for ax in extra_axes:
-        if ax is not None:
-            ax.set_facecolor(BG_PANEL)
-    return fig
-
-def plot_kde(passes: pl.DataFrame):
-    pitch = Pitch(
-        pitch_type="statsbomb",
-        pitch_color=BG_PITCH,
-        line_color=LINE_PITCH,
-        line_zorder=2,
-        linewidth=1,
-    )
-    fig, ax = pitch.draw(figsize=(9, 6))
-    _dark_fig(fig)
-
-    if not passes.is_empty():
-        pitch.kdeplot(
-            passes["pass_end_location_x"],
-            passes["pass_end_location_y"],
-            ax=ax,
-            fill=True, levels=80, thresh=0.05,
-            cmap=CMAP_KDE, alpha=0.85,
-        )
-    else:
-        ax.text(60, 40, "No pass data", color=TEXT_MUTED, ha="center", va="center", fontsize=11)
-
-    return fig
-
-
-PIZZA_PARAMS = [
-    "Touches", "Touch Share", "Passes", "Fwd Pass %",
-    "Carry Distance", "Progressive Carries",
-    "Final Third Entries", "Goal Creating Actions",
-    "Shots", "xG / Shot",
+# ── Pizza constants ───────────────────────────────────────────────────────────
+METRICS = [
+    "touch_share", "touches", "progressive_share", "progressive_distance_share",
+    "prog_dist_per_action", "central_progression_share", "wide_progression_share",
 ]
+METRIC_LABELS = [
+    "Touch Share", "Touch Volume", "Progressive\nAction Share", "Progressive\nDistance Share",
+    "Prog. Distance\nper Action", "Central\nProgression", "Wide\nProgression",
+]
+POS_BINS_BY_GROUP = {
+    "GK":  ["Goalkeeper"],
+    "Def": ["Center Back", "Fullback"],
+    "Mid": ["Defensive Midfield", "Central Midfield", "Attacking Midfield"],
+    "Att": ["Wide Forward", "Striker"],
+}
+GROUP_FULL_NAMES = {
+    "GK":  "Goalkeeper",
+    "Def": "Defenders",
+    "Mid": "Midfielders",
+    "Att": "Attackers",
+}
+PIZZA_KWARGS = dict(
+    background_color=BG_DARK,
+    straight_line_color="#3A3E47", straight_line_lw=1,
+    last_circle_lw=1, last_circle_color="#3A3E47",
+    other_circle_ls="-.", other_circle_lw=0.8,
+)
+KW_NONWIN = dict(facecolor=BLUE,  edgecolor="#3A3E47", zorder=2, linewidth=1)
+KW_WIN    = dict(facecolor=CORAL, edgecolor="#3A3E47", zorder=2, linewidth=1)
+KW_PARAMS = dict(color=TEXT_MUTED, fontsize=7, fontproperties=font_normal.prop, va="center")
+KW_VALS   = dict(color=WHITE, fontsize=7, fontproperties=font_normal.prop, zorder=3,
+                 bbox=dict(edgecolor="#3A3E47", facecolor="#1A4A7A",
+                           boxstyle="round,pad=0.2", lw=1))
+KW_CVALS  = dict(color=WHITE, fontsize=7, fontproperties=font_normal.prop, zorder=3,
+                 bbox=dict(edgecolor="#3A3E47", facecolor="#8B3030",
+                           boxstyle="round,pad=0.2", lw=1))
 
-def plot_pizza():
-    rng = np.random.default_rng(42)
-    values = rng.integers(15, 99, size=len(PIZZA_PARAMS)).tolist()
-
-    baker = PyPizza(
-        params=PIZZA_PARAMS,
-        background_color=BG_PANEL,
-        straight_line_color="#2E4057",
-        straight_line_lw=1,
-        last_circle_lw=1,
-        last_circle_color="#2E4057",
-        other_circle_ls="-.",
-        other_circle_lw=0.5,
+# ── Touch share dumbbell data (module-level cache) ────────────────────────────
+@st.cache_data
+def build_touch_dumbbell_data(year: str):
+    ts = touch_share_s if year == "All Years" else touch_share_s.filter(pl.col("season_name") == year)
+    league_agg = (
+        ts
+        .group_by("position_bin")
+        .agg(pl.col("touch_share").mean().alias("league_avg"))
+        .sort("league_avg", descending=True)
     )
-    fig, _ = baker.make_pizza(
-        values,
-        figsize=(5, 5.5),
-        color_blank_space="same",
-        blank_alpha=0.12,
-        kwargs_slices=dict(facecolor=ACCENT, edgecolor="#2E4057", zorder=2, linewidth=1, alpha=0.85),
-        kwargs_params=dict(color=TEXT, fontsize=8, fontproperties=font_normal.prop, va="center"),
-        kwargs_values=dict(
-            color=TEXT, fontsize=8, fontproperties=font_normal.prop, zorder=3,
-            bbox=dict(edgecolor="#2E4057", facecolor=ACCENT, boxstyle="round,pad=0.2", lw=1),
-        ),
+    team_agg = (
+        ts
+        .group_by(["team", "position_bin", "outcome_binary"])
+        .agg(pl.col("touch_share").mean().alias("touch_share"))
     )
-    _dark_fig(fig)
-    return fig
+    return league_agg.to_pandas(), team_agg.to_pandas()
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SIDEBAR
-# ══════════════════════════════════════════════════════════════════════════════
-with st.sidebar:
-    st.markdown(
-        f"<div style='padding:10px 0 14px'>"
-        f"<span style='font-size:1.2rem;font-weight:700;color:{TEXT}'>Trilemma</span>"
-        f"<br><span style='font-size:0.65rem;color:{TEXT_MUTED};letter-spacing:0.12em;"
-        f"text-transform:uppercase'>Soccer Analytics</span></div>",
-        unsafe_allow_html=True,
+# ── Tactical scatter data (module-level cache) ────────────────────────────────
+@st.cache_data
+def build_scatter_data(year: str):
+    src = team_metrics_s if year == "All Years" else team_metrics_s.filter(pl.col("season_name") == year)
+    SCATTER_COLS = ["wide_progression_share", "build_up_share", "max_progression_share", "central_midfield_touch_share"]
+    # Aggregate to (team, outcome_binary) means — one dot per team per outcome
+    agg = (
+        src
+        .group_by(["team", "outcome_binary"])
+        .agg([pl.col(c).mean() for c in SCATTER_COLS] + [pl.len().alias("n")])
     )
-    st.divider()
+    return agg.to_pandas()
 
-    # ── Player (outside form → triggers immediate re-run + updates season list)
-    all_players = all_parity_players()
-    default_player = (
-        "Sergio Busquets i Burgos" if "Sergio Busquets i Burgos" in all_players
-        else all_players[0]
+# ── Pizza aggregations (module-level cache) ───────────────────────────────────
+@st.cache_data
+def build_pizza_aggs(year: str):
+    base = (
+        touch_share_s
+        .join(
+            prog_actions_s.select(["match_id", "team", "position_bin", "progressive_actions", "progressive_share"]),
+            on=["match_id", "team", "position_bin"], how="left",
+        )
+        .join(
+            prog_dist_share.select(["match_id", "team", "position_bin", "progressive_distance", "progressive_distance_share"]),
+            on=["match_id", "team", "position_bin"], how="left",
+        )
+        .join(
+            wing_vs_central.select(["match_id", "team", "position_bin", "central_progression_share", "wide_progression_share"]),
+            on=["match_id", "team", "position_bin"], how="left",
+        )
+        .with_columns(
+            # null-safe: returns null (not inf) when progressive_actions is 0
+            pl.when(pl.col("progressive_actions") > 0)
+            .then(pl.col("progressive_distance") / pl.col("progressive_actions").cast(pl.Float64))
+            .otherwise(None)
+            .alias("prog_dist_per_action")
+        )
+        .with_columns(
+            pl.col("position_bin").replace({
+                "Goalkeeper":         "GK",
+                "Center Back":        "Def",
+                "Fullback":           "Def",
+                "Defensive Midfield": "Mid",
+                "Central Midfield":   "Mid",
+                "Attacking Midfield": "Mid",
+                "Wide Forward":       "Att",
+                "Striker":            "Att",
+            }).alias("pos_group")
+        )
     )
-    selected_player = st.selectbox(
-        "Player", all_players, index=all_players.index(default_player)
+    if year != "All Years":
+        base = base.filter(pl.col("season_name") == year)
+
+    agg_exprs   = [pl.col(m).mean().alias(m) for m in METRICS]
+    grouped_grp = base.group_by(["team", "pos_group",    "outcome_binary"]).agg(agg_exprs)
+    grouped_bin = base.group_by(["team", "position_bin", "outcome_binary"]).agg(agg_exprs)
+    return grouped_grp, grouped_bin
+
+def _rank(subset: pl.DataFrame, team_name: str) -> list[int]:
+    team_row = subset.filter(pl.col("team") == team_name)
+    if team_row.is_empty():
+        return [50] * len(METRICS)
+    percentiles = []
+    for m in METRICS:
+        col_vals = subset[m].drop_nulls().to_list()
+        team_val = team_row[m][0]
+        if team_val is None or len(col_vals) == 0:
+            percentiles.append(50)
+        else:
+            percentiles.append(int(round(sum(v <= team_val for v in col_vals) / len(col_vals) * 100)))
+    return percentiles
+
+def get_pct_group(grouped_grp, team_name, pos_grp, outcome):
+    return _rank(
+        grouped_grp.filter((pl.col("pos_group") == pos_grp) & (pl.col("outcome_binary") == outcome)),
+        team_name,
     )
-
-    # ── Season + Condition inside form → only apply on button click ──────────
-    with st.form("filters"):
-        player_seasons = ["All Seasons"] + seasons_for_player(selected_player)
-        selected_season = st.selectbox("Season", player_seasons, index=0)
-        condition = st.radio("Match Condition", ["All", "Wins", "Non-Wins"])
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-        st.form_submit_button("Apply Filters", use_container_width=True, type="primary")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# MAIN AREA
-# ══════════════════════════════════════════════════════════════════════════════
-
-# Compute stats outside sidebar so they're available to main area
-pe = player_parity_events(selected_player, selected_season, condition)
-n_matches = pe.select("match_id").unique().shape[0]
-n_passes  = pe.filter(pl.col("type") == "Pass").shape[0]
-n_shots   = pe.filter(pl.col("type") == "Shot").shape[0]
-xg_total  = round(float(pe.filter(pl.col("type") == "Shot")["shot_statsbomb_xg"].sum() or 0), 2)
 
 # ── Header ────────────────────────────────────────────────────────────────────
-season_disp = selected_season if selected_season != "All Seasons" else "All Seasons"
 st.markdown(
-    f"<h2 style='margin-bottom:0'>Positional & Possession Structures</h2>"
-    f"<p style='color:{TEXT_MUTED};font-size:0.80rem;margin:2px 0 0'>"
-    f"xG-Parity Matches (|ΔxG| ≤ {XG_PARITY_THRESHOLD})"
-    f"&nbsp;·&nbsp; {selected_player}"
-    f"&nbsp;·&nbsp; {season_disp}"
-    f"&nbsp;·&nbsp; {condition}"
-    f"&nbsp;·&nbsp; {n_matches} matches</p>",
+    f"<h2 style='margin-bottom:2px'>Positional Level Impact in xG-Parity Matches</h2>"
+    f"<p style='color:{TEXT_MUTED};font-size:0.78rem;margin:0 0 6px'>"
+    f"Comparing positional possession structures across match outcomes in competitive, balanced fixtures</p>",
     unsafe_allow_html=True,
 )
-st.divider()
+# ══════════════════════════════════════════════════════════════════════════════
+# TEAM VIEW
+# ══════════════════════════════════════════════════════════════════════════════
 
-# ── Stat bar ──────────────────────────────────────────────────────────────────
-s1, s2, s3, s4 = st.columns(4)
-for col, label, val in [
-    (s1, "Matches",  f"{n_matches}"),
-    (s2, "Passes",   f"{n_passes:,}"),
-    (s3, "Shots",    f"{n_shots}"),
-    (s4, "xG",       f"{xg_total:.2f}"),
-]:
-    col.markdown(
-        f"<div class='stat-card'>"
-        f"<div class='stat-label'>{label}</div>"
-        f"<div class='stat-value'>{val}</div>"
+# ── Filters + legend (left) | cards (right) ──────────────────────────────────
+all_teams = sorted(wing_vs_central_s["team"].unique().to_list())
+
+col_left, col_right = st.columns([1, 1])
+
+with col_left:
+    f1, f2 = st.columns([1, 1])
+    with f1:
+        selected_team = st.selectbox("Team", ["All Teams"] + all_teams, index=0)
+    with f2:
+        if selected_team == "All Teams":
+            team_years = sorted(
+                wing_vs_central_s["season_name"].drop_nulls().unique().to_list()
+            )
+        else:
+            team_years = sorted(
+                wing_vs_central_s
+                .filter(pl.col("team") == selected_team)["season_name"]
+                .drop_nulls().unique().to_list()
+            )
+        selected_year = st.selectbox("Season", ["All Years"] + team_years, key="team_year")
+    st.markdown(
+        f"<div style='display:flex;align-items:center;gap:20px;padding:8px 16px;"
+        f"background:{BG_PANEL};border:1px solid {ACCENT}44;border-radius:8px;'>"
+        f"<span style='color:{TEXT_MUTED};font-size:0.68rem;letter-spacing:0.09em;"
+        f"text-transform:uppercase;white-space:nowrap;'>Legend</span>"
+        f"<span style='display:flex;align-items:center;gap:7px;font-size:0.80rem;color:{WHITE};white-space:nowrap'>"
+        f"<svg width='11' height='11' viewBox='0 0 12 12'><polygon points='6,0 12,6 6,12 0,6' fill='{GREY}'/></svg>"
+        f"League Average</span>"
+        f"<span style='display:flex;align-items:center;gap:7px;font-size:0.80rem;color:{WHITE};white-space:nowrap'>"
+        f"<svg width='11' height='11'><circle cx='5.5' cy='5.5' r='4.5' fill='lightcoral' stroke='{WHITE}' stroke-width='1'/></svg>"
+        f"Win</span>"
+        f"<span style='display:flex;align-items:center;gap:7px;font-size:0.80rem;color:{WHITE};white-space:nowrap'>"
+        f"<svg width='11' height='11'><circle cx='5.5' cy='5.5' r='4.5' fill='{BLUE}' stroke='{WHITE}' stroke-width='1'/></svg>"
+        f"Non-Win</span>"
         f"</div>",
         unsafe_allow_html=True,
     )
 
-st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+year_label = selected_year if selected_year != "All Years" else "All Seasons"
 
-# ── Charts ────────────────────────────────────────────────────────────────────
-player_passes = pe.filter(pl.col("type") == "Pass")
+# ── Filter data ───────────────────────────────────────────────────────────────
+wvc_filtered = wing_vs_central_s
+if selected_year != "All Years":
+    wvc_filtered = wvc_filtered.filter(pl.col("season_name") == selected_year)
 
-c_left, c_right = st.columns([1.15, 0.85])
+# ── Stats ─────────────────────────────────────────────────────────────────────
+if selected_team == "All Teams":
+    n_matches = wvc_filtered["match_id"].n_unique()
+else:
+    n_matches = wvc_filtered.filter(pl.col("team") == selected_team)["match_id"].n_unique()
 
-with c_left:
-    st.markdown("<div class='chart-label'>Pass End Locations — KDE</div>", unsafe_allow_html=True)
-    fig_kde = plot_kde(player_passes)
-    st.pyplot(fig_kde, use_container_width=True)
-    plt.close(fig_kde)
+xg_filtered = xg_parity_s
+if selected_team != "All Teams":
+    xg_filtered = xg_filtered.filter(pl.col("team") == selected_team)
+if selected_year != "All Years":
+    xg_filtered = xg_filtered.filter(pl.col("season_name") == selected_year)
 
-with c_right:
-    st.markdown("<div class='chart-label'>Percentile Rank</div>", unsafe_allow_html=True)
-    fig_pz = plot_pizza()
-    st.pyplot(fig_pz, use_container_width=True)
-    plt.close(fig_pz)
+win_rate = (xg_filtered["outcome"] == "Win").sum() / max(len(xg_filtered), 1) * 100
+
+def _card(label, value, val_style=""):
+    return (
+        f"<div class='stat-card' style='margin-bottom:8px;padding:8px 16px'>"
+        f"<div class='stat-label'>{label}</div>"
+        f"<div class='stat-value' style='{val_style}'>{value}</div>"
+        f"</div>"
+    )
+
+with col_right:
+    st.markdown(
+        _card("Matches", n_matches) +
+        _card("Win Rate", f"{win_rate:.0f}%"),
+        unsafe_allow_html=True,
+    )
+
+st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+# ── Data prep ─────────────────────────────────────────────────────────────────
+league_agg = (
+    wvc_filtered
+    .group_by("position_bin")
+    .agg(pl.col("central_progression_share").mean().alias("central"))
+    .sort("central", descending=True)
+)
+league_avg = dict(zip(league_agg["position_bin"].to_list(), league_agg["central"].to_list()))
+
+team_agg_src = wvc_filtered if selected_team == "All Teams" else wvc_filtered.filter(pl.col("team") == selected_team)
+team_agg = (
+    team_agg_src
+    .group_by(["position_bin", "outcome_binary"])
+    .agg(pl.col("central_progression_share").mean().alias("central"))
+)
+team_win = dict(zip(
+    team_agg.filter(pl.col("outcome_binary") == "Win")["position_bin"].to_list(),
+    team_agg.filter(pl.col("outcome_binary") == "Win")["central"].to_list(),
+))
+team_nonwin = dict(zip(
+    team_agg.filter(pl.col("outcome_binary") == "Non-Win")["position_bin"].to_list(),
+    team_agg.filter(pl.col("outcome_binary") == "Non-Win")["central"].to_list(),
+))
+
+league_touch_df, team_touch_df = build_touch_dumbbell_data(selected_year)
+touch_order  = league_touch_df["position_bin"].tolist()
+league_touch = dict(zip(league_touch_df["position_bin"], league_touch_df["league_avg"]))
+
+if selected_team == "All Teams":
+    team_touch_src = team_touch_df.groupby(["position_bin", "outcome_binary"], as_index=False)["touch_share"].mean()
+else:
+    team_touch_src = team_touch_df[team_touch_df["team"] == selected_team]
+touch_win_ts = dict(zip(
+    team_touch_src[team_touch_src["outcome_binary"] == "Win"]["position_bin"],
+    team_touch_src[team_touch_src["outcome_binary"] == "Win"]["touch_share"],
+))
+touch_nonwin_ts = dict(zip(
+    team_touch_src[team_touch_src["outcome_binary"] == "Non-Win"]["position_bin"],
+    team_touch_src[team_touch_src["outcome_binary"] == "Non-Win"]["touch_share"],
+))
+
+POS_DEPTH = {
+    "Goalkeeper":         0.0,
+    "Center Back":        1.0,
+    "Fullback":           1.9,
+    "Defensive Midfield": 3.2,
+    "Central Midfield":   4.2,
+    "Attacking Midfield": 5.2,
+    "Wide Forward":       6.1,
+    "Striker":            7.0,
+}
+ALL_POS = list(POS_DEPTH.keys())
+
+grouped_grp, grouped_bin = build_pizza_aggs(selected_year)
+
+SPINE_COL = "#2E323A"
+YTICKS    = [POS_DEPTH[p] for p in ALL_POS]
+YLIM      = (-0.6, 7.5)
+GRID_KW   = dict(axis="x", color=SPINE_COL, lw=0.6, zorder=0)
+
+# ── Row 1: Viz 1 — Tactical Quadrant Scatter (Wide vs Build-Up) ──────────────
+scatter_df = build_scatter_data(selected_year)
+
+if True:
+    fig_sc, ax_sc = plt.subplots(figsize=(12, 5.0))
+    fig_sc.patch.set_alpha(0)
+    ax_sc.set_facecolor(BG_DARK)
+
+    for outcome, color in [("Non-Win", BLUE), ("Win", CORAL)]:
+        sub = scatter_df[scatter_df["outcome_binary"] == outcome]
+        others = sub[sub["team"] != selected_team] if selected_team != "All Teams" else sub
+        ax_sc.scatter(
+            others["wide_progression_share"], others["build_up_share"],
+            c=color, alpha=0.22, s=35, zorder=2,
+        )
+        if selected_team != "All Teams":
+            team_row = sub[sub["team"] == selected_team]
+            if not team_row.empty:
+                ax_sc.scatter(
+                    team_row["wide_progression_share"], team_row["build_up_share"],
+                    c=color, alpha=1.0, s=200, zorder=5,
+                    edgecolors=WHITE, linewidths=1.2,
+                )
+                for _, r in team_row.iterrows():
+                    ax_sc.annotate(
+                        f"{selected_team} · {outcome}",
+                        xy=(r["wide_progression_share"], r["build_up_share"]),
+                        xytext=(9, 6), textcoords="offset points",
+                        color=WHITE, fontsize=7.5, zorder=6,
+                        fontproperties=font_normal.prop,
+                        bbox=dict(boxstyle="round,pad=0.25", facecolor=BG_DARK,
+                                  edgecolor=color, lw=0.9, alpha=0.85),
+                        arrowprops=dict(arrowstyle="-", color=color, lw=0.7),
+                    )
+
+    xmed = scatter_df["wide_progression_share"].median()
+    ymed = scatter_df["build_up_share"].median()
+    xmin_ = scatter_df["wide_progression_share"].min()
+    xmax_ = scatter_df["wide_progression_share"].max()
+    ymin_ = scatter_df["build_up_share"].min()
+    ymax_ = scatter_df["build_up_share"].max()
+    ax_sc.axvline(xmed, color=WHITE, lw=0.7, ls="--", alpha=0.30)
+    ax_sc.axhline(ymed, color=WHITE, lw=0.7, ls="--", alpha=0.30)
+    qkw = dict(color=GREY, fontsize=7.5, alpha=0.75, ha="center", va="center",
+               fontproperties=font_normal.prop)
+    ax_sc.text((xmin_ + xmed) / 2, (ymed + ymax_) / 2, "Central + Control", **qkw)
+    ax_sc.text((xmed + xmax_) / 2, (ymed + ymax_) / 2, "Wide + Control",    **qkw)
+    ax_sc.text((xmin_ + xmed) / 2, (ymin_ + ymed) / 2, "Central + Direct",  **qkw)
+    ax_sc.text((xmed + xmax_) / 2, (ymin_ + ymed) / 2, "Wide + Direct",     **qkw)
+    ax_sc.xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+    ax_sc.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+    ax_sc.set_xlabel("Wide Progression Share  →  (more wide)", color=TEXT_MUTED,
+                     fontsize=8, fontproperties=font_normal.prop, labelpad=4)
+    ax_sc.set_ylabel("Build-Up Share  →  (more controlled)", color=TEXT_MUTED,
+                     fontsize=8, fontproperties=font_normal.prop, labelpad=4)
+    ax_sc.tick_params(colors=GREY, labelsize=8)
+    for sp in ax_sc.spines.values():
+        sp.set_edgecolor(SPINE_COL)
+    ax_sc.set_title("Tactical Style: Wide vs Build-Up", color=WHITE, fontsize=10, pad=6,
+                    fontproperties=font_bold.prop)
+    fig_sc.tight_layout()
+    st.pyplot(fig_sc, use_container_width=True)
+    plt.close(fig_sc)
+
+# ── Row 2: Viz 4 — Concentration vs CM Touch Share ───────────────────────────
+if True:
+    fig_v4, ax_v4 = plt.subplots(figsize=(12, 5.0))
+    fig_v4.patch.set_alpha(0)
+    ax_v4.set_facecolor(BG_DARK)
+
+    for outcome, color in [("Non-Win", BLUE), ("Win", CORAL)]:
+        sub = scatter_df[scatter_df["outcome_binary"] == outcome]
+        others = sub[sub["team"] != selected_team] if selected_team != "All Teams" else sub
+        ax_v4.scatter(
+            others["max_progression_share"], others["central_midfield_touch_share"],
+            c=color, alpha=0.22, s=35, zorder=2,
+        )
+        if selected_team != "All Teams":
+            team_row = sub[sub["team"] == selected_team]
+            if not team_row.empty:
+                ax_v4.scatter(
+                    team_row["max_progression_share"], team_row["central_midfield_touch_share"],
+                    c=color, alpha=1.0, s=200, zorder=5,
+                    edgecolors=WHITE, linewidths=1.2,
+                )
+                for _, r in team_row.iterrows():
+                    ax_v4.annotate(
+                        f"{selected_team} · {outcome}",
+                        xy=(r["max_progression_share"], r["central_midfield_touch_share"]),
+                        xytext=(9, 6), textcoords="offset points",
+                        color=WHITE, fontsize=7.5, zorder=6,
+                        fontproperties=font_normal.prop,
+                        bbox=dict(boxstyle="round,pad=0.25", facecolor=BG_DARK,
+                                  edgecolor=color, lw=0.9, alpha=0.85),
+                        arrowprops=dict(arrowstyle="-", color=color, lw=0.7),
+                    )
+
+    xmean = scatter_df["max_progression_share"].mean()
+    ymean = scatter_df["central_midfield_touch_share"].mean()
+    xmin_ = scatter_df["max_progression_share"].min()
+    xmax_ = scatter_df["max_progression_share"].max()
+    ymin_ = scatter_df["central_midfield_touch_share"].min()
+    ymax_ = scatter_df["central_midfield_touch_share"].max()
+    ax_v4.axvline(xmean, color=WHITE, lw=0.7, ls="--", alpha=0.30)
+    ax_v4.axhline(ymean, color=WHITE, lw=0.7, ls="--", alpha=0.30)
+    qkw4 = dict(color=GREY, fontsize=7.5, alpha=0.75, ha="center", va="center",
+                fontproperties=font_normal.prop)
+    ax_v4.text((xmin_ + xmean) / 2, (ymean + ymax_) / 2, "Total Football\n+ High CM",          **qkw4)
+    ax_v4.text((xmean + xmax_) / 2, (ymean + ymax_) / 2, "Dominant Position\n+ CM Controlled", **qkw4)
+    ax_v4.text((xmin_ + xmean) / 2, (ymin_ + ymean) / 2, "Total Football\n+ Low CM",           **qkw4)
+    ax_v4.text((xmean + xmax_) / 2, (ymin_ + ymean) / 2, "Single Position\n(Non-CM Dominant)", **qkw4)
+    ax_v4.xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+    ax_v4.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+    ax_v4.set_xlabel("Max Position Progressive Share  →  (more concentrated)", color=TEXT_MUTED,
+                     fontsize=8, fontproperties=font_normal.prop, labelpad=4)
+    ax_v4.set_ylabel("Central Midfield Touch Share  →", color=TEXT_MUTED,
+                     fontsize=8, fontproperties=font_normal.prop, labelpad=4)
+    ax_v4.tick_params(colors=GREY, labelsize=8)
+    for sp in ax_v4.spines.values():
+        sp.set_edgecolor(SPINE_COL)
+    ax_v4.set_title("Play Concentration vs CM Dominance", color=WHITE, fontsize=10, pad=6,
+                    fontproperties=font_bold.prop)
+    fig_v4.tight_layout()
+    st.pyplot(fig_v4, use_container_width=True)
+    plt.close(fig_v4)
+
+st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
+# ── Row 3: Touch Share | Central (shared Y-axis) ─────────────────────────────
+col_touch, col_central = st.columns([1, 1])
+
+
+with col_touch:
+    fig_ts, ax_ts = plt.subplots(figsize=(5, 3.5))
+    fig_ts.patch.set_alpha(0)
+    ax_ts.set_facecolor(BG_DARK)
+    ax_ts.grid(**GRID_KW)
+    for pos in ALL_POS:
+        y  = POS_DEPTH[pos]
+        lv = league_touch.get(pos)
+        bw = touch_win_ts.get(pos)
+        bn = touch_nonwin_ts.get(pos)
+        if bw is not None and bn is not None:
+            ax_ts.plot([bw, bn], [y, y], color=WHITE, lw=1.2, alpha=0.4, zorder=2)
+        if lv is not None:
+            ax_ts.scatter(lv, y, color=GREY, s=60, zorder=3, marker="D")
+        if bw is not None:
+            ax_ts.scatter(bw, y, color=CORAL, s=100, zorder=4, edgecolors=WHITE, linewidths=0.8)
+        if bn is not None:
+            ax_ts.scatter(bn, y, color=BLUE, s=100, zorder=4, edgecolors=WHITE, linewidths=0.8)
+    ax_ts.set_yticks(YTICKS)
+    ax_ts.set_yticklabels(ALL_POS, color=WHITE, fontsize=8, fontproperties=font_normal.prop)
+    ax_ts.set_ylim(*YLIM)
+    ax_ts.tick_params(axis="x", colors=GREY, labelsize=8)
+    ax_ts.xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+    ax_ts.set_xlabel("Touch Share", color=TEXT_MUTED, fontsize=8,
+                     fontproperties=font_normal.prop, labelpad=4)
+    for spine in ax_ts.spines.values():
+        spine.set_edgecolor(SPINE_COL)
+    ax_ts.set_title("Touch Share", color=WHITE, fontsize=10, pad=6,
+                    fontproperties=font_bold.prop)
+    plt.tight_layout()
+    st.pyplot(fig_ts, use_container_width=True)
+    plt.close(fig_ts)
+
+with col_central:
+    fig_db, ax = plt.subplots(figsize=(5, 3.5))
+    fig_db.patch.set_alpha(0)
+    ax.set_facecolor(BG_DARK)
+    ax.grid(**GRID_KW)
+    ax.axvspan(0.0,  0.38, color="#1A78CF",    alpha=0.06, zorder=0)
+    ax.axvspan(0.38, 0.62, color="#FFFFFF",     alpha=0.03, zorder=0)
+    ax.axvspan(0.62, 1.0,  color="lightcoral", alpha=0.06, zorder=0)
+    for x, label in [(0.19, "Wide"), (0.50, "Mixed"), (0.81, "Central")]:
+        ax.text(x, 7.2, label, color=GREY, fontsize=7, ha="center", va="bottom",
+                fontproperties=font_normal.prop)
+    for pos in ALL_POS:
+        y  = POS_DEPTH[pos]
+        lv = league_avg.get(pos)
+        bw = team_win.get(pos)
+        bn = team_nonwin.get(pos)
+        if bw is not None and bn is not None:
+            ax.plot([bw, bn], [y, y], color=WHITE, lw=1.2, alpha=0.4, zorder=2)
+        if lv is not None:
+            ax.scatter(lv, y, color=GREY, s=60, zorder=3, marker="D")
+        if bw is not None:
+            ax.scatter(bw, y, color=CORAL, s=100, zorder=4, edgecolors=WHITE, linewidths=0.8)
+        if bn is not None:
+            ax.scatter(bn, y, color=BLUE, s=100, zorder=4, edgecolors=WHITE, linewidths=0.8)
+    ax.axvline(0.5, color=GREY, lw=0.8, ls="--", alpha=0.4, zorder=1)
+    ax.set_yticks(YTICKS)
+    ax.set_yticklabels([])
+    ax.set_ylim(*YLIM)
+    ax.set_xlim(0.0, 1.0)
+    ax.tick_params(axis="x", colors=GREY, labelsize=8)
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+    ax.set_xlabel("← Wide  ·  Central Share  ·  Central →",
+                  color=TEXT_MUTED, fontsize=8, fontproperties=font_normal.prop, labelpad=4)
+    for spine in ax.spines.values():
+        spine.set_edgecolor(SPINE_COL)
+    ax.set_title("Central vs Wide Progression", color=WHITE, fontsize=10, pad=6,
+                 fontproperties=font_bold.prop)
+    plt.tight_layout()
+    st.pyplot(fig_db, use_container_width=True)
+    plt.close(fig_db)
+
+# ── Row 4: four pizzas — GK | Def | Mid | Att ────────────────────────────────
+st.markdown(
+    f"<p style='color:{TEXT_MUTED};font-size:0.72rem;letter-spacing:0.09em;"
+    f"text-transform:uppercase;margin:6px 0 2px'>Percentile Ranks</p>",
+    unsafe_allow_html=True,
+)
+pizza_cols = st.columns([1, 1, 1, 1])
+KW_PARAMS_SM = dict(color=TEXT_MUTED, fontsize=5.5, fontproperties=font_normal.prop, va="center")
+KW_VALS_SM   = dict(color=WHITE, fontsize=5.5, fontproperties=font_normal.prop, zorder=3,
+                    bbox=dict(edgecolor="#3A3E47", facecolor="#1A4A7A",
+                              boxstyle="round,pad=0.2", lw=1))
+KW_CVALS_SM  = dict(color=WHITE, fontsize=5.5, fontproperties=font_normal.prop, zorder=3,
+                    bbox=dict(edgecolor="#3A3E47", facecolor="#8B3030",
+                              boxstyle="round,pad=0.2", lw=1))
+
+for col, grp in zip(pizza_cols, POS_BINS_BY_GROUP.keys()):
+    with col:
+        fig_pz, ax_pz = plt.subplots(figsize=(3.5, 3.5), subplot_kw=dict(projection="polar"))
+        fig_pz.patch.set_alpha(0)
+        ax_pz.set_facecolor(BG_DARK)
+        PyPizza(params=METRIC_LABELS, **PIZZA_KWARGS).make_pizza(
+            get_pct_group(grouped_grp, selected_team, grp, "Non-Win"),
+            compare_values=get_pct_group(grouped_grp, selected_team, grp, "Win"),
+            ax=ax_pz,
+            kwargs_slices=KW_NONWIN, kwargs_compare=KW_WIN,
+            kwargs_params=KW_PARAMS_SM, kwargs_values=KW_VALS_SM,
+            kwargs_compare_values=KW_CVALS_SM,
+        )
+        fig_pz.suptitle(GROUP_FULL_NAMES[grp], fontproperties=font_bold.prop,
+                        fontsize=9, color=WHITE, y=1.0)
+        plt.tight_layout(rect=[0, 0, 1, 0.985])
+        st.pyplot(fig_pz, use_container_width=True)
+        plt.close(fig_pz)
