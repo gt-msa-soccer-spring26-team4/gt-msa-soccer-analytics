@@ -220,7 +220,6 @@ print("Touch share data set exported.")
 ##################################################################################
 # 3) Progressive actions (pass, carry) by position
 ##################################################################################
-
 progressive_events = events[
     events["match_id"].isin(xg_parity_match_ids)
 ].copy()
