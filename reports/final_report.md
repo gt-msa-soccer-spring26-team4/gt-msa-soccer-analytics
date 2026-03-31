@@ -74,6 +74,41 @@ Sub-questions:
 **Out of scope:** Real-time prediction, individual players, causation  
 **Limitations:** Barcelona-heavy data, reverse causality threat, 0.3 threshold choice
 
+
+### 2.5 Data Challenges and Assumptions
+The validity of our findings rests on several critical assumptions regarding the underlying StatsBomb event data and our feature engineering pipeline.
+
+#### 2.5.1 Positional Mapping Logic
+Soccer is inherently fluid; a player’s "nominal" position (e.g., Left Back) rarely describes their average location over 90 minutes. To create stable structural features, we implemented a tiered mapping logic:
+
+**Aggregation**: We mapped over 20 granular StatsBomb position IDs into four primary functional units: Defensive, Midfield, Attacking, and Goalkeeping.
+
+**Logic**: For each team-match, we calculate the centroid (mean X and Y coordinates) of all events performed by players assigned to those units in the starting lineup.
+
+**Assumption**: We assume that the starting lineup roles sufficiently represent a player's tactical responsibility for the duration of their time on the pitch, despite potential mid-match formation shifts.
+
+#### 2.5.2 Data Sparsity and Event-Conditionality
+The StatsBomb dataset is "sparse by design".
+
+**The Challenge**: High-value metrics like shot_statsbomb_xg are only populated for "Shot" events. Similarly, spatial data for "Carries" or "Pressure" events is conditional on those specific actions occurring.
+
+**Handling**: Rather than global imputation, we utilize event-specific filtering. Positional centroids are calculated only from events with valid coordinate data, ensuring that "off-camera" or administrative events do not skew the structural averages.
+
+#### 2.5.3 The Statistical Independence Violation (Twin-Observation Problem)
+Our dataset consists of approximately 1,300 team-match observations derived from 651 matches.
+
+**The Challenge**: Observations from the same match are not independent. If Team A wins, Team B must lose or draw; their positional structures are reactive to one another.
+
+**Assumption & Mitigation**: While initial EDA treats these as independent for broad distribution checks, we acknowledge that this artificially deflates p-values. In our formal testing, we address this by [mentioning your mitigation: e.g., sampling one team per match or using matched-pairs testing].
+
+#### 2.5.4 Contextual Limitations
+To maintain a clear focus on the xG-parity phenomenon, we have made the following scoping assumptions:
+
+**Game State (The Scoreboard Effect)**: We do not currently control for whether a team was leading or trailing when an event occurred. We assume that the "average" position across the match is a representative proxy for tactical intent, despite the known tendency for winning teams to "drop deep" late in matches.
+
+**Neutrality**: We do not currently adjust for Home/Away bias or relative team strength (e.g., market value), assuming that the xG-parity filter (|ΔxG| ≤ 0.3) acts as a sufficient equalizer for these factors.
+
+
 ---
 
 ## 3. LITERATURE REVIEW (2-3 pages)
